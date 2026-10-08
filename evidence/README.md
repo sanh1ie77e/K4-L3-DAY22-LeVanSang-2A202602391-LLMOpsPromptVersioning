@@ -1,37 +1,30 @@
 # Evidence — LeVanSang-2A202602391
 
+Thời điểm đánh giá: 2026-10-08T12:49:03.418123+07:00 (GMT+7).
+
 ## Thiết kế thí nghiệm
 
-V1 trả lời trực tiếp trong 2–4 câu. V2 nêu `Core idea:` rồi `Explanation:`
-trong 3–5 câu, tập trung vào định nghĩa, cơ chế hoặc giới hạn được context hỗ trợ.
-Cả hai chỉ dùng context, trả lời bằng ngôn ngữ của câu hỏi và thừa nhận khi
-thiếu dữ liệu. Bước 2 và 3 sử dụng hai system prompt giống hệt nhau.
+V1 trả lời trực tiếp trong 2–4 câu. V2 nêu Core idea rồi Explanation trong 3–5 câu. Cả hai chỉ dùng context và thừa nhận khi thiếu dữ liệu. System prompt của bước 2 và bước 3 giống hệt nhau.
 
-Knowledge base, chunk size 500, overlap 50 và retriever k=3 được giữ cố định.
-Bước 2 chia 50 request bằng MD5 (V1=19, V2=31). Bước 3 đánh giá toàn bộ
-50 QA qua từng phiên bản, nên mỗi phiên bản có 50 mẫu để so sánh.
+Knowledge base, FAISS, chunk size 500, overlap 50 và k=3 được giữ cố định. A/B routing dùng MD5: V1=19, V2=31. Đánh giá RAGAS dùng đủ 50 QA cho mỗi phiên bản.
 
-## Trạng thái bằng chứng
+## Kết quả đo
 
-Hai log `04_pii_demo_log.txt` và `04_json_demo_log.txt` được tạo từ lần chạy
-Guardrails thực tế: 6 case PII và 5 case JSON. Bốn loại PII đều bị che,
-chuỗi sạch được giữ nguyên, JSON sửa được và JSON không sửa được đều có
-đầu ra parse được.
+| Metric | V1 | V2 | Cao hơn |
+|---|---:|---:|---|
+| faithfulness | 0.9781 | 0.9059 | V1 |
+| answer_relevancy | 0.9224 | 0.8534 | V1 |
+| context_recall | 1.0000 | 1.0000 | Tie |
+| context_precision | 0.9450 | 0.9417 | V1 |
 
-Chưa có kết quả RAGAS hoặc ảnh LangSmith khi chưa chạy với API key hợp lệ.
-Không suy ra điểm faithfulness từ unit test và không dùng số minh họa của slide
-làm kết quả bài nộp. Phân tích định lượng sẽ được ghi ở đây khi bước 3 hoàn thành.
+Faithfulness cao nhất: 0.9781; đạt ngưỡng 0.8: True. Kết quả so sánh faithfulness: V1.
 
-## Bằng chứng bắt buộc
+## Phân tích
 
-| File | Cách tạo |
-|---|---|
-| `01_langsmith_traces.png` | Chụp LangSmith với ≥50 traces `rag-query`, kiểm tra 1 trace có 3 documents |
-| `02_prompt_hub.png` | Chụp hai prompt cá nhân đã push/pull trên Prompt Hub |
-| `02_ab_routing_log.txt` | Tự tạo khi bước 2 chạy thành công với Hub |
-| `03_ragas_scores.png` | Chụp bảng so sánh V1/V2 từ terminal sau bước 3 |
-| `03_ragas_report.json` | Bước 3 tự sao chép báo cáo thật từ `data/` |
-| `04_pii_demo_log.txt` | Tự tạo bởi bước 4 |
-| `04_json_demo_log.txt` | Tự tạo bởi bước 4 |
+Hai phiên bản nhận cùng kết quả retrieval cho từng câu hỏi. Khác biệt faithfulness/relevancy phản ánh nội dung câu trả lời và biến động của LLM chấm điểm. V1 giới hạn độ dài nên có thể giảm số claim không được context hỗ trợ; V2 giải thích có cấu trúc có thể giúp câu trả lời đủ ý hơn, nhưng mỗi chi tiết thêm cũng cần bằng chứng. Đây là giả thuyết giải thích, cần đối chiếu trace/câu trả lời để xác nhận nguyên nhân.
 
-Không đưa API key vào code, log hoặc ảnh chụp màn hình.
+Context recall/precision tập trung vào retrieval so với reference; chênh lệch giữa hai lần chấm không chứng minh prompt đã làm retriever tốt hơn. Một lần chạy cũng chưa đủ để kết luận chênh lệch nhỏ có ý nghĩa thống kê.
+
+## Bằng chứng
+
+Báo cáo số liệu: 03_ragas_report.json; log bảng điểm: 03_ragas_evaluation_log.txt; log routing: 02_ab_routing_log.txt. Hai log Guardrails được tạo từ 6 case PII và 5 case JSON. Ba ảnh bắt buộc phải chụp từ LangSmith/terminal thực tế; kiểm tra đủ ảnh trước khi nộp. Unit test không thay thế traces hoặc điểm RAGAS.

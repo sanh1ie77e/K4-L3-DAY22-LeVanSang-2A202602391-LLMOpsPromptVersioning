@@ -1,7 +1,7 @@
 # Bài làm — LeVanSang-2A202602391
 
 - Tên repo khi nộp: `K4-L3-DAY22-LeVanSang-2A202602391-LLMOpsPromptVersioning`.
-- Project LangSmith trong `.env`: `day22-LeVanSang-2A202602391`.
+- Project LangSmith trong `.env`: [day22-LeVanSang-2A202602391](https://smith.langchain.com/o/a45bf19d-9bec-4923-a77b-4d2b4cdfb553/projects/p/4078a719-000c-4abf-a07b-f1a6744850a4).
 - Prompt Hub: `le-van-sang-2a202602391-rag-prompt-v1` và `le-van-sang-2a202602391-rag-prompt-v2`.
 - V1 trả lời ngắn gọn; V2 định nghĩa và giải thích có cấu trúc. Hai prompt được giữ giống hệt giữa bước 2 và bước 3.
 
@@ -30,6 +30,9 @@ Các bước 2 và 4 tự lưu log UTF-8 vào đúng tên file evidence. Bước
 `data/ragas_report.json` và bản sao `evidence/03_ragas_report.json`; chỉ ghi báo cáo
 khi cả hai phiên bản có đủ bốn metric và không có điểm thiếu/NaN.
 Log đầy đủ của bước 3 được lưu ở `evidence/03_ragas_evaluation_log.txt`.
+Nếu đã đóng terminal, chạy `python src/show_ragas_report.py` để in lại bảng
+điểm từ báo cáo đã đo, không gọi API hay đánh giá lại. Chụp bảng này và lưu
+thành `evidence/03_ragas_scores.png`.
 Chương trình bước 2 bắt buộc pull thành công từ Hub trong lần chạy nộp bài;
 nhánh fallback local chỉ phục vụ debug khi gọi hàm riêng.
 

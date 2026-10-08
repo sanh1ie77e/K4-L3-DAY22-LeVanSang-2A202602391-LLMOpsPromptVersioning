@@ -154,7 +154,7 @@ def write_analysis(report: dict, evidence_path: Path):
         "| Metric | V1 | V2 | Cao hơn |\n|---|---:|---:|---|\n"
         + "\n".join(rows) + "\n\n"
         + f"Faithfulness cao nhất: {max(v1['faithfulness'], v2['faithfulness']):.4f}; "
-        + f"đạt ngưỡng 0.8: {report['target_met']}. {faith_winner} về faithfulness.\n\n"
+        + f"đạt ngưỡng 0.8: {report['target_met']}. Kết quả so sánh faithfulness: {faith_winner}.\n\n"
         + "## Phân tích\n\n"
         + "Hai phiên bản nhận cùng kết quả retrieval cho từng câu hỏi. Khác biệt "
         + "faithfulness/relevancy phản ánh nội dung câu trả lời và biến động của "

@@ -1,0 +1,10 @@
+{
+  "project": "day22-LeVanSang-2A202602391",
+  "project_id": "4078a719-000c-4abf-a07b-f1a6744850a4",
+  "counts": {
+    "rag-query": 50,
+    "ab-rag-query": 50
+  },
+  "target_met": true,
+  "project_url": "https://smith.langchain.com/o/a45bf19d-9bec-4923-a77b-4d2b4cdfb553/projects/p/4078a719-000c-4abf-a07b-f1a6744850a4"
+}

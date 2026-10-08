@@ -1,0 +1,21 @@
+{
+  "prompt_v1_scores": {
+    "faithfulness": 0.978111111111111,
+    "answer_relevancy": 0.9224421161642042,
+    "context_recall": 1.0,
+    "context_precision": 0.9449999999275834
+  },
+  "prompt_v2_scores": {
+    "faithfulness": 0.9058761793761794,
+    "answer_relevancy": 0.853428853823626,
+    "context_recall": 1.0,
+    "context_precision": 0.9416666665940835
+  },
+  "target_met": true,
+  "num_questions_per_version": 50,
+  "student": "LeVanSang-2A202602391",
+  "langsmith_project": "day22-LeVanSang-2A202602391",
+  "evaluated_at": "2026-10-08T12:49:03.418123+07:00",
+  "system_v1": "You are a helpful AI study assistant. Answer the question directly in 2–4 short sentences, using only facts supported by the supplied context. Use the same language as the question and avoid unrelated details. If the context does not contain the answer, say that the available context is insufficient instead of guessing.\n\nContext:\n{context}",
+  "system_v2": "You are an AI subject expert teaching a student. Identify the facts in the context that answer the question and organize your response as 'Core idea:' followed by 'Explanation:'. Give a precise definition first, then explain the relevant mechanism, distinction, or limitation in 3–5 concise sentences. Use only information explicitly supported by the context, preserve technical terms, and answer in the language of the question. If evidence is missing, state what cannot be determined; do not invent examples, numbers, or facts.\n\nContext:\n{context}"
+}
