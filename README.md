@@ -1,3 +1,54 @@
+# Bài làm — LeVanSang-2A202602391
+
+- Tên repo khi nộp: `K4-L3-DAY22-LeVanSang-2A202602391-LLMOpsPromptVersioning`.
+- Project LangSmith trong `.env`: `day22-LeVanSang-2A202602391`.
+- Prompt Hub: `le-van-sang-2a202602391-rag-prompt-v1` và `le-van-sang-2a202602391-rag-prompt-v2`.
+- V1 trả lời ngắn gọn; V2 định nghĩa và giải thích có cấu trúc. Hai prompt được giữ giống hệt giữa bước 2 và bước 3.
+
+## Chạy bài làm trên Windows PowerShell
+
+Từ thư mục gốc repo:
+
+```powershell
+python -m venv venv                 # chỉ khi chưa có venv
+.\venv\Scripts\Activate.ps1
+$env:PYTHONUTF8 = "1"
+python -m pip install -r requirements.txt
+# Chỉ chép nếu chưa có .env; giữ nguyên key nếu file đã tồn tại.
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
+# Điền LANGCHAIN_API_KEY và OPENAI_API_KEY trong .env, không dán vào code.
+python src/config.py
+python -m unittest discover -s tests -v
+python src/run_all.py
+python src/check_submission.py --langsmith  # sau khi bổ sung đủ 3 ảnh
+```
+
+Chạy riêng một bước: `python src/run_all.py --step 4` (thay số bằng 1–4).
+Với Git Bash, dùng `source venv/Scripts/activate` và `export PYTHONUTF8=1`.
+
+Các bước 2 và 4 tự lưu log UTF-8 vào đúng tên file evidence. Bước 3 tự lưu cả
+`data/ragas_report.json` và bản sao `evidence/03_ragas_report.json`; chỉ ghi báo cáo
+khi cả hai phiên bản có đủ bốn metric và không có điểm thiếu/NaN.
+Log đầy đủ của bước 3 được lưu ở `evidence/03_ragas_evaluation_log.txt`.
+Chương trình bước 2 bắt buộc pull thành công từ Hub trong lần chạy nộp bài;
+nhánh fallback local chỉ phục vụ debug khi gọi hàm riêng.
+
+Sau khi chạy thật, chụp ba ảnh theo bảng evidence bên dưới. Số traces phải
+được xác nhận trên LangSmith; dòng hoàn thành trên terminal không thay thế
+bằng chứng đó. Test tại máy dùng model giả để kiểm tra logic và không được
+tính là traces hay điểm RAGAS của bài nộp.
+
+Guardrails dùng chế độ đồng bộ và tắt telemetry cho demo tại máy. Validator
+vẫn chạy qua `Guard.validate()` với `OnFailAction.FIX` trong constructor.
+Regex PII minh họa email, số điện thoại kiểu Mỹ, SSN và thẻ 16 chữ số;
+không phải bộ phát hiện đầy đủ cho mọi định dạng PII.
+
+`requirements-lock.txt` lưu phiên bản của môi trường Windows/Python 3.13 đã
+kiểm tra. Khi cần tái tạo đúng môi trường này, cài bằng
+`python -m pip install -r requirements-lock.txt`.
+
+---
+
 > **📌 Hình thức: BÀI CÁ NHÂN** — mỗi học viên tự làm và tự nộp 1 repo theo quy ước đặt tên.
 > **⏰ Thời lượng:** ~3–4 giờ · **Deadline:** 23:59 ngày học lab (GMT+7)
 >

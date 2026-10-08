@@ -70,6 +70,9 @@ def main():
         status = "✅ PASS" if success else "❌ FAIL"
         print(f"  {status}  {title}")
 
+    # Exit code phản ánh đúng kết quả, để terminal/CI không báo thành công giả.
+    return all(results.values())
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(0 if main() else 1)

@@ -1,249 +1,231 @@
-"""
-Bước 3 — RAGAS Evaluation
-===========================
-NHIỆM VỤ:
-  1. Chạy 50 QA pairs qua CẢ 2 prompt version, lưu answers + contexts
-  2. Tạo EvaluationDataset với các SingleTurnSample object
-  3. Đánh giá với 4 RAGAS metrics: faithfulness, answer_relevancy,
-     context_recall, context_precision
-  4. In bảng so sánh V1 vs V2
-  5. Lưu kết quả vào data/ragas_report.json
-
-DELIVERABLE: faithfulness ≥ 0.8 cho ít nhất 1 prompt version
-             + file data/ragas_report.json được tạo ra
-
-⏰ LƯU Ý: Bước này mất ~15-30 phút. Hãy bắt đầu sớm!
-"""
-import sys
+"""Bước 3: đánh giá đủ 50 QA cho mỗi prompt bằng bốn metric RAGAS."""
 import json
-import warnings
-warnings.filterwarnings("ignore")
-
+import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-
-import config  # ⚠️ phải import trước LangChain
+import config  # Phải import trước LangChain.
 
 import numpy as np
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from ragas import evaluate, EvaluationDataset, SingleTurnSample
-from ragas.metrics import faithfulness, answer_relevancy, context_recall, context_precision
+from langchain_core.prompts import ChatPromptTemplate
+from ragas import EvaluationDataset, SingleTurnSample, evaluate
+from ragas.metrics import answer_relevancy, context_precision, context_recall, faithfulness
+from ragas.run_config import RunConfig
 
-from utils.llm_factory import get_llm, get_embeddings
-from utils.data_loader import load_knowledge_base, split_text, build_vectorstore
 from qa_pairs import QA_PAIRS
+from utils.data_loader import build_vectorstore, load_knowledge_base, split_text
+from utils.evidence import tee_logs
+from utils.llm_factory import get_embeddings, get_llm
 
 
-# ── 1. Prompt Templates (copy từ Bước 2) ──────────────────────────────────
-# TODO: Copy SYSTEM_V1 và SYSTEM_V2 mà bạn đã viết ở file 02_prompt_hub_ab_routing.py
-# ⚠️ Cả 2 phải chứa {context}, ví dụ kết thúc bằng "...\n\nContext:\n{context}"
-#    Thiếu {context} → LLM không thấy tài liệu, không báo lỗi, faithfulness/context_* rất thấp.
-SYSTEM_V1 = ...
+# Giống hệt SYSTEM_V1 / SYSTEM_V2 của bước 2, kể cả {context}.
+SYSTEM_V1 = (
+    "You are a helpful AI study assistant. Answer the question directly in 2–4 "
+    "short sentences, using only facts supported by the supplied context. "
+    "Use the same language as the question and avoid unrelated details. "
+    "If the context does not contain the answer, say that the available context "
+    "is insufficient instead of guessing.\n\nContext:\n{context}"
+)
+SYSTEM_V2 = (
+    "You are an AI subject expert teaching a student. Identify the facts in the "
+    "context that answer the question and organize your response as 'Core idea:' "
+    "followed by 'Explanation:'. Give a precise definition first, then explain "
+    "the relevant mechanism, distinction, or limitation in 3–5 concise sentences. "
+    "Use only information explicitly supported by the context, preserve "
+    "technical terms, and answer in the language of the question. "
+    "If evidence is missing, state what cannot be determined; do not invent "
+    "examples, numbers, or facts.\n\nContext:\n{context}"
+)
 PROMPT_V1 = ChatPromptTemplate.from_messages([
-    ("system", SYSTEM_V1),
-    ("human",  "{question}"),
+    ("system", SYSTEM_V1), ("human", "{question}"),
 ])
-
-SYSTEM_V2 = ...
 PROMPT_V2 = ChatPromptTemplate.from_messages([
-    ("system", SYSTEM_V2),
-    ("human",  "{question}"),
+    ("system", SYSTEM_V2), ("human", "{question}"),
 ])
-
 PROMPTS = {"v1": PROMPT_V1, "v2": PROMPT_V2}
+METRIC_NAMES = ["faithfulness", "answer_relevancy", "context_recall", "context_precision"]
 
 
-# ── 2. Setup Vectorstore ───────────────────────────────────────────────────
 def setup_vectorstore():
-    """Tái sử dụng — tạo FAISS vectorstore từ knowledge base."""
-    embeddings  = get_embeddings()
-    text        = load_knowledge_base()
-    chunks      = split_text(text)
+    """Giữ cùng FAISS/chunking/retriever với hai bước trước."""
+    embeddings = get_embeddings()
+    text = load_knowledge_base()
+    chunks = split_text(text, chunk_size=500, chunk_overlap=50)
     return build_vectorstore(chunks, embeddings)
 
 
-# ── 3. Chạy RAG và thu thập kết quả ───────────────────────────────────────
 def run_rag(retriever, llm, prompt, question: str) -> dict:
-    """
-    Chạy RAG chain cho 1 câu hỏi.
-
-    ⚠️ QUAN TRỌNG: trả về contexts là LIST of strings, KHÔNG phải string đã ghép!
-    RAGAS cần từng đoạn riêng để tính context_recall và context_precision.
-
-    Trả về: {"answer": str, "contexts": list[str]}
-    """
-    # TODO: Retrieve documents từ retriever
-    docs = ...
-
-    # TODO: Tạo contexts là danh sách page_content (KHÔNG ghép chuỗi ở đây)
-    # Gợi ý: contexts = [doc.page_content for doc in docs]
-    contexts = ...   # phải là list[str] !
-
-    # TODO: Ghép contexts thành 1 string để truyền vào {context} của prompt
+    """contexts là list[str]; ctx_str chỉ dùng làm input cho prompt."""
+    docs = retriever.invoke(question)
+    contexts = [doc.page_content for doc in docs]
     ctx_str = "\n\n".join(contexts)
-
-    # TODO: Chạy chain (prompt | llm | StrOutputParser()).invoke(...)
     answer = (prompt | llm | StrOutputParser()).invoke({
-        "context":  ...,
-        "question": ...,
+        "context": ctx_str, "question": question,
     })
-
-    # TODO: Trả về dict với answer và contexts (list)
-    return {"answer": ..., "contexts": ...}
+    return {"answer": answer, "contexts": contexts}
 
 
 def collect_rag_outputs(vectorstore, prompt_version: str) -> list:
-    """
-    Chạy tất cả 50 QA pairs qua prompt version được chỉ định.
-    Trả về: list of dict với keys: question, reference, answer, contexts
-    """
+    """Chạy toàn bộ QA_PAIRS, giữ nguyên reference để chấm context_*."""
     retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-    llm       = get_llm()
-    prompt    = PROMPTS[prompt_version]
-
+    llm = get_llm()
+    prompt = PROMPTS[prompt_version]
     results = []
-    print(f"\n🚀 Đang chạy 50 câu hỏi với prompt {prompt_version} ...")
-
+    print(f"\n🚀 Đang chạy {len(QA_PAIRS)} câu hỏi với prompt {prompt_version} ...")
     for i, qa in enumerate(QA_PAIRS, 1):
-        # TODO: Gọi run_rag() cho câu hỏi hiện tại
-        out = ...
-
-        # TODO: Append vào results dict với 4 keys
+        out = run_rag(retriever, llm, prompt, qa["question"])
         results.append({
-            "question":  qa["question"],
+            "question": qa["question"],
             "reference": qa["reference"],
-            "answer":    ...,        # out["answer"]
-            "contexts":  ...,        # out["contexts"] — phải là list[str] !
+            "answer": out["answer"],
+            "contexts": out["contexts"],
         })
-        print(f"  [{i:02d}/50] {qa['question'][:60]}")
-
+        print(f"  [{i:02d}/{len(QA_PAIRS)}] {qa['question']}")
     return results
 
 
-# ── 4. Tạo RAGAS EvaluationDataset ────────────────────────────────────────
 def build_ragas_dataset(rag_results: list) -> EvaluationDataset:
-    """
-    Chuyển đổi kết quả RAG thành RAGAS EvaluationDataset.
-
-    Mỗi SingleTurnSample cần 4 trường:
-      user_input         → câu hỏi
-      response           → câu trả lời đã tạo
-      retrieved_contexts → list[str] các đoạn đã retrieve
-      reference          → đáp án chuẩn (ground truth)
-    """
-    # TODO: Tạo list các SingleTurnSample từ rag_results
+    """Ánh xạ đúng bốn trường SingleTurnSample, không ghép retrieved_contexts."""
     samples = [
         SingleTurnSample(
-            user_input=...,           # r["question"]
-            response=...,             # r["answer"]
-            retrieved_contexts=...,   # r["contexts"]
-            reference=...,            # r["reference"]
+            user_input=r["question"],
+            response=r["answer"],
+            retrieved_contexts=r["contexts"],
+            reference=r["reference"],
         )
         for r in rag_results
     ]
-
-    # TODO: Wrap thành EvaluationDataset và trả về
     return EvaluationDataset(samples=samples)
 
 
-# ── 5. Chạy RAGAS Evaluation ──────────────────────────────────────────────
 def run_ragas_eval(rag_results: list, version: str) -> dict:
-    """
-    Đánh giá kết quả RAG với 4 RAGAS metrics.
-    Trả về: dict {metric_name: mean_score}
-
-    Lưu ý: evaluate() thực hiện rất nhiều lần gọi LLM → mất 5-10 phút / version.
-    """
-    print(f"\n📐 Đang đánh giá RAGAS cho prompt {version} ... (vui lòng chờ ~5-10 phút)")
-
-    # TODO: Tạo EvaluationDataset từ rag_results
-    dataset = ...
-
-    # LLM và Embeddings riêng để RAGAS dùng làm evaluator
+    """Chấm bốn metric; từ chối báo cáo thiếu điểm hoặc chứa NaN."""
+    print(f"\n📐 Đang đánh giá RAGAS cho prompt {version.upper()} ...")
+    dataset = build_ragas_dataset(rag_results)
     llm_eval = get_llm(temperature=0)
     emb_eval = get_embeddings()
-
-    # TODO: Gọi evaluate() với đầy đủ 4 metrics
-    # Gợi ý:
-    #   result = evaluate(
-    #       dataset,
-    #       metrics=[faithfulness, answer_relevancy, context_recall, context_precision],
-    #       llm=llm_eval,
-    #       embeddings=emb_eval,
-    #   )
     result = evaluate(
-        ...,
-        metrics=[...],
-        llm=...,
-        embeddings=...,
+        dataset,
+        metrics=[faithfulness, answer_relevancy, context_recall, context_precision],
+        llm=llm_eval,
+        embeddings=emb_eval,
+        run_config=RunConfig(max_workers=4, timeout=180, max_retries=3),
+        raise_exceptions=True,
     )
-
-    # Tính mean score cho mỗi metric
-    # result["faithfulness"] trả về list of floats → dùng np.mean()
     scores = {}
-    for key in ["faithfulness", "answer_relevancy", "context_recall", "context_precision"]:
+    for key in METRIC_NAMES:
         raw = result[key]
-        scores[key] = float(np.mean([v for v in raw if v is not None]))
-
-    # In kết quả
+        if len(raw) != len(rag_results) or any(
+            value is None or not np.isfinite(value) for value in raw
+        ):
+            raise ValueError(f"Metric {key} của {version} thiếu điểm hợp lệ; cần chạy lại.")
+        scores[key] = float(np.mean(raw))
     print(f"\n📊 Kết quả RAGAS — Prompt {version.upper()}:")
-    for k, v in scores.items():
-        star = " ⭐" if k == "faithfulness" and v >= 0.8 else ""
-        print(f"  {k:30s}: {v:.4f}{star}")
-
+    for key, score in scores.items():
+        star = " ⭐" if key == "faithfulness" and score >= 0.8 else ""
+        print(f"  {key:30s}: {score:.4f}{star}")
     return scores
 
 
-# ── 6. Main ────────────────────────────────────────────────────────────────
-def main():
-    print("=" * 60)
-    print("  Bước 3: RAGAS Evaluation")
-    print("=" * 60)
+def write_analysis(report: dict, evidence_path: Path):
+    """Viết phân tích từ điểm thực tế; tách nhận xét số liệu và giả thuyết."""
+    v1, v2 = report["prompt_v1_scores"], report["prompt_v2_scores"]
+    rows = []
+    for metric in METRIC_NAMES:
+        winner = "V1" if v1[metric] > v2[metric] else "V2" if v2[metric] > v1[metric] else "Tie"
+        rows.append(f"| {metric} | {v1[metric]:.4f} | {v2[metric]:.4f} | {winner} |")
+    faith_winner = (
+        "V1" if v1["faithfulness"] > v2["faithfulness"] else
+        "V2" if v2["faithfulness"] > v1["faithfulness"] else "Hai phiên bản bằng nhau"
+    )
+    text = (
+        "# Evidence — LeVanSang-2A202602391\n\n"
+        f"Thời điểm đánh giá: {report['evaluated_at']} (GMT+7).\n\n"
+        "## Thiết kế thí nghiệm\n\n"
+        "V1 trả lời trực tiếp trong 2–4 câu. V2 nêu Core idea rồi Explanation "
+        "trong 3–5 câu. Cả hai chỉ dùng context và thừa nhận khi thiếu dữ liệu. "
+        "System prompt của bước 2 và bước 3 giống hệt nhau.\n\n"
+        "Knowledge base, FAISS, chunk size 500, overlap 50 và k=3 được giữ cố định. "
+        "A/B routing dùng MD5: V1=19, V2=31. Đánh giá RAGAS dùng đủ 50 QA "
+        "cho mỗi phiên bản.\n\n"
+        "## Kết quả đo\n\n"
+        "| Metric | V1 | V2 | Cao hơn |\n|---|---:|---:|---|\n"
+        + "\n".join(rows) + "\n\n"
+        + f"Faithfulness cao nhất: {max(v1['faithfulness'], v2['faithfulness']):.4f}; "
+        + f"đạt ngưỡng 0.8: {report['target_met']}. {faith_winner} về faithfulness.\n\n"
+        + "## Phân tích\n\n"
+        + "Hai phiên bản nhận cùng kết quả retrieval cho từng câu hỏi. Khác biệt "
+        + "faithfulness/relevancy phản ánh nội dung câu trả lời và biến động của "
+        + "LLM chấm điểm. V1 giới hạn độ dài nên có thể giảm số claim không được "
+        + "context hỗ trợ; V2 giải thích có cấu trúc có thể giúp câu trả lời đủ ý "
+        + "hơn, nhưng mỗi chi tiết thêm cũng cần bằng chứng. Đây là giả thuyết "
+        + "giải thích, cần đối chiếu trace/câu trả lời để xác nhận nguyên nhân.\n\n"
+        + "Context recall/precision tập trung vào retrieval so với reference; "
+        + "chênh lệch giữa hai lần chấm không chứng minh prompt đã làm retriever "
+        + "tốt hơn. Một lần chạy cũng chưa đủ để kết luận chênh lệch nhỏ có ý nghĩa "
+        + "thống kê.\n\n"
+        + "## Bằng chứng\n\n"
+        + "Báo cáo số liệu: 03_ragas_report.json; log bảng điểm: "
+        + "03_ragas_evaluation_log.txt; log routing: 02_ab_routing_log.txt. "
+        + "Hai log Guardrails được tạo từ 6 case PII và 5 case JSON. "
+        + "Ba ảnh bắt buộc phải chụp từ LangSmith/terminal thực tế; kiểm tra "
+        + "đủ ảnh trước khi nộp. Unit test không thay thế traces hoặc điểm RAGAS.\n"
+    )
+    (evidence_path.parent / "README.md").write_text(text, encoding="utf-8")
 
+
+def _run():
+    print("=" * 65)
+    print("  Bước 3: RAGAS Evaluation — LeVanSang-2A202602391")
+    print("=" * 65)
     if not config.validate():
         sys.exit(1)
-
-    # TODO: Tạo vectorstore
-    vectorstore = ...
-
-    # Thu thập kết quả RAG cho cả V1 và V2
+    vectorstore = setup_vectorstore()
     v1_results = collect_rag_outputs(vectorstore, "v1")
     v2_results = collect_rag_outputs(vectorstore, "v2")
-
-    # Chạy RAGAS evaluation
     v1_scores = run_ragas_eval(v1_results, "v1")
     v2_scores = run_ragas_eval(v2_results, "v2")
 
-    # In bảng so sánh
     print("\n" + "=" * 65)
     print(f"  {'Metric':30s}  {'V1':>8}  {'V2':>8}  Winner")
     print("=" * 65)
-    for metric in ["faithfulness", "answer_relevancy", "context_recall", "context_precision"]:
-        s1, s2  = v1_scores[metric], v2_scores[metric]
-        winner  = "← V1" if s1 > s2 else "← V2"
+    for metric in METRIC_NAMES:
+        s1, s2 = v1_scores[metric], v2_scores[metric]
+        winner = "V1" if s1 > s2 else "V2" if s2 > s1 else "Tie"
         print(f"  {metric:30s}  {s1:>8.4f}  {s2:>8.4f}  {winner}")
 
-    # Kiểm tra mục tiêu
     best_faith = max(v1_scores["faithfulness"], v2_scores["faithfulness"])
     if best_faith >= 0.8:
         print(f"\n✅ Đạt mục tiêu: faithfulness = {best_faith:.4f} ≥ 0.8")
     else:
-        print(f"\n⚠️  Chưa đạt mục tiêu ({best_faith:.4f} < 0.8).")
-        print("   Gợi ý: giảm chunk_size, tăng k, hoặc điều chỉnh prompt.")
+        print(f"\n⚠️ Chưa đạt mục tiêu ({best_faith:.4f} < 0.8).")
+        print("   Kiểm tra context và facts trong câu trả lời trước khi chỉnh retrieval.")
 
-    # TODO: Lưu báo cáo vào data/ragas_report.json
     report = {
         "prompt_v1_scores": v1_scores,
         "prompt_v2_scores": v2_scores,
         "target_met": best_faith >= 0.8,
+        "num_questions_per_version": len(QA_PAIRS),
+        "student": "LeVanSang-2A202602391",
+        "langsmith_project": config.LANGSMITH_PROJECT,
+        "evaluated_at": datetime.now(timezone(timedelta(hours=7))).isoformat(),
+        "system_v1": SYSTEM_V1,
+        "system_v2": SYSTEM_V2,
     }
-    report_path = Path(__file__).parent.parent / "data" / "ragas_report.json"
-    # TODO: Ghi report vào file bằng json.dumps hoặc json.dump
-    # Gợi ý: report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    ...
-    print(f"💾 Đã lưu báo cáo vào {report_path}")
+    report_path = Path(__file__).resolve().parent.parent / "data" / "ragas_report.json"
+    payload = json.dumps(report, indent=2, ensure_ascii=False, allow_nan=False)
+    report_path.write_text(payload, encoding="utf-8")
+    evidence_path = report_path.parent.parent / "evidence" / "03_ragas_report.json"
+    evidence_path.write_text(payload, encoding="utf-8")
+    write_analysis(report, evidence_path)
+    print(f"💾 Đã lưu báo cáo vào {report_path} và {evidence_path}")
+
+
+def main():
+    with tee_logs("03_ragas_evaluation_log.txt"):
+        _run()
 
 
 if __name__ == "__main__":
